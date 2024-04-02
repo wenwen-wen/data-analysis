@@ -8,12 +8,14 @@ conn = sqlite3.connect('codinghere-20240208.db')
 cursor = conn.cursor()
 
 # 查詢數據
-cursor.execute('SELECT * FROM answers')
-cursor.execute('SELECT * FROM courses')
-cursor.execute('SELECT * FROM exams')
-cursor.execute('SELECT * FROM problems')
-cursor.execute('SELECT * FROM submits')
-cursor.execute('SELECT * FROM users')
+cursor.execute('''
+        SELECT *
+        FROM exams
+        JOIN users
+        WHERE users.name = '温彥丞';
+''')
+
+
 rows = cursor.fetchall()
 
 # 輸出查詢結果
