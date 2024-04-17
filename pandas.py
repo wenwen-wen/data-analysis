@@ -9,10 +9,13 @@ cursor = conn.cursor()
 
 # 查詢數據
 cursor.execute('''
-        SELECT *
-        FROM exams
-        JOIN users
-        WHERE users.name = '温彥丞';
+               SELECT answers.score, users.name, users.stdID, exams.name, answers.totaltime, answers.submits
+               FROM answers
+               JOIN users 
+               ON answers.userid = users.uid
+               JOIN exams 
+               ON answers.examid = exams.uid
+               WHERE users.name = '???';
 ''')
 
 
