@@ -29,8 +29,7 @@ SELECT
            ELSE 'Default Name'
            END AS custom_cid_name, 
     examname,
-    users.name,
-    score,
+    SUBSTR(submits, 1, INSTR(submits, '#') - 1) AS problem,
     CAST(SUBSTR(submits, INSTR(submits, '#') + 1) AS INTEGER) AS time
 FROM answers
     JOIN users ON answers.userid = users.fid
@@ -38,7 +37,7 @@ WHERE
     courseid IN ('C000001', 'C000002' )
     AND examname IN ('0418期中考', '乙班期中測驗', '乙班期末測驗', 
         '期中測驗', '期末測驗', '期末考', '甲班期中測驗', '甲班期末測驗')
-GROUP BY courseid, examname, users.name, time
+GROUP BY courseid, examname, problem, time
                 ''')
 
 
@@ -57,14 +56,15 @@ plt.rcParams['axes.unicode_minus'] = False  # 解決負號顯示問題
 
 # SQL 查詢结果
 data = [
-    ('110-王老師計概一甲(1)', '甲班期中測驗', '劉若英', 90, 286),
+    ('110-王老師計概一甲(1)', '甲班期中測驗', 'BASE022', 130),
+    
 ]
 
 # 分組資料
-class_a_midterm = [(d[4], d[3]) for d in data if d[1] == '甲班期中測驗']
-class_a_final = [(d[4], d[3]) for d in data if d[1] == '甲班期末測驗']
-class_b_midterm = [(d[4], d[3]) for d in data if d[1] == '乙班期中測驗']
-class_b_final = [(d[4], d[3]) for d in data if d[1] == '乙班期末測驗']
+class_a_midterm = [(d[2], d[3]) for d in data if d[1] == '甲班期中測驗']
+class_a_final = [(d[2], d[3]) for d in data if d[1] == '甲班期末測驗']
+class_b_midterm = [(d[2], d[3]) for d in data if d[1] == '乙班期中測驗']
+class_b_final = [(d[2], d[3]) for d in data if d[1] == '乙班期末測驗']
 
 # 繪製散點圖
 plt.figure(figsize=(10, 6))  # 設定圖表大小
@@ -74,9 +74,9 @@ plt.scatter(*zip(*class_a_final), label='甲班期末考', color='green', marker
 plt.scatter(*zip(*class_b_midterm), label='乙班期中考', color='red', marker='s')
 plt.scatter(*zip(*class_b_final), label='乙班期末考', color='orange', marker='x')
 
-plt.xlabel('作答時間 (秒)')
-plt.ylabel('分數')
-plt.title('110-王老師計概一甲(1) 和 110-王老師計概一乙(1) 期中期末考分數及作答時間(秒)')
+plt.xlabel('考試題目')
+plt.ylabel('作答時間 (秒)')
+plt.title('110-王老師計概一甲(1) 和 110-王老師計概一乙(1) 期中期末考考試題目及作答時間(秒)')
 plt.legend(loc='upper center', bbox_to_anchor=(1.06, 1))
 plt.grid(True)  # 添加網格線
 plt.show()
