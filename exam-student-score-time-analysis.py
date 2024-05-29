@@ -29,6 +29,7 @@ SELECT
            ELSE 'Default Name'
            END AS custom_cid_name, 
     examname,
+    answers.date,
     users.name,
     score,
     CAST(SUBSTR(submits, INSTR(submits, '#') + 1) AS INTEGER) AS time
