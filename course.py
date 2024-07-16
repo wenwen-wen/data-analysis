@@ -8,6 +8,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import re
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.metrics import mean_squared_error
+import numpy as np
+from sklearn.metrics import confusion_matrix
+from matplotlib import pyplot as plt
 
 courseSelect = [
     "110-計概(一)甲",
@@ -79,9 +86,16 @@ def course_basic(course_name):
     output += f"Compilers: {', '.join(course['compilers']) if 'compilers' in course else 'All'}\n"
     return output
 
-def course_students(course_name):
-    cid = courseMap[course_name]
-    course = [c for c in CH.courses if c["id"] == cid][0]
+def _course_students_raw(course):
+    if 'students' not in course: return []
+    result = []
+    for key, value in  course['students'].items():
+        if key not in IGNORE_LIST_IDS:
+            value["id"] = key
+            result.append(value)
+    return result
+
+def _course_students(course):
     if 'students' not in course: return "No students found\n"
     students = course['students']
     student_keys = [k for k in students.keys() if k not in IGNORE_LIST_IDS]
@@ -89,6 +103,11 @@ def course_students(course_name):
     output = f"Students : {len(students)}\n"
     output += ", ".join([s['name'] for s in students])
     return output
+
+def course_students(course_name):
+    cid = courseMap[course_name]
+    course = [c for c in CH.courses if c["id"] == cid][0]
+    return _course_students(course)
 
 def course_units(course_name):
     cid = courseMap[course_name]
@@ -102,9 +121,31 @@ def course_units(course_name):
         output += "[" + ", ".join(probs) + "]\n"
     return output
 
-def course_exams(course_name):
-    cid = courseMap[course_name]
-    course = [c for c in CH.courses if c["id"] == cid][0]
+def _course_exams_raw(course, answers, problemsmap):
+    if "exams" not in course: return []
+    result = []
+    for exam in course["exams"]:
+        obj = {
+            "id": exam["id"],
+            "name": exam["name"],
+            "tlimit": exam["tlimit"],
+            "tscore": exam["tscore"],
+        }
+        questions = [e["title"]["zh"] for e in exam["probs"]]
+        obj["problems"] = questions
+        obj["pids"] = [problemsmap[q] for q in questions]
+        exam_answers = [a for a in answers if a["examid"] == exam["id"]]
+        obj["answers"] = len(exam_answers)
+        answer_dates = list(set(a["date"] for a in exam_answers))
+        obj["dates"] = answer_dates
+        result.append(obj)
+    if DEBUG:
+        print("==========Exams==========")
+        for exam in result:
+            print("Exam: ", exam)
+    return result
+
+def _course_exams(course):
     if 'exams' not in course: return "No exams found\n"
     output = f"Exams : {len(course['exams'])}\n"
     for exam in course['exams']:
@@ -116,6 +157,11 @@ def course_exams(course_name):
         output += "[" + ", ".join(probs) + "]\n"
     return output
 
+def course_exams(course_name):
+    cid = courseMap[course_name]
+    course = [c for c in CH.courses if c["id"] == cid][0]
+    return _course_exams(course)
+
 def exam_date(course, keyword):
     exams = course['exams']
     mexam = [exam for exam in exams if keyword in exam['name']][0]
@@ -123,7 +169,7 @@ def exam_date(course, keyword):
     answer_dates = list(set(a["date"] for a in exam_answers))
     return answer_dates[0]
 
-def course_submits(course_name): # Homework submits
+def course_submits(course_name, first_threshold=FIRST_TIME_THRESHOLD, first_ignore=FIRST_IGNORE): # Homework submits
     cid = courseMap[course_name]
     course = [c for c in CH.courses if c["id"] == cid][0]
     submits = [s for s in CH.submits if 'cid' in s and s['cid'] == cid]
@@ -140,19 +186,19 @@ def course_submits(course_name): # Homework submits
         pids = [p['id'] for p in unit['probs']]
         unit_submits = [s for s in submits if start_date <= s['created'] <= end_time and s['pid'] in pids]
         split_submits.append(unit_submits)
-        submit_counts.append(len(unit_submits))
-        average_submit_counts.append(len(unit_submits)/len(pids))
+        submit_counts.append(len(unit_submits)/studnum)
+        average_submit_counts.append(len(unit_submits)/len(pids)/studnum)
 
     spent_times = []
     for unit_submits in split_submits:
-        submitstat = submits_stat(unit_submits)
+        submitstat = submits_stat(unit_submits, first_threshold, first_ignore)
         stimes = 0
         for k, v in submitstat.items():
             if 'TST' in k: stimes += v
-        spent_times.append(stimes/studnum)
+        spent_times.append(stimes/len(submitstat)/studnum)
 
     unitdates = [datetime.strptime(date, '%Y%m%d').date() for date in unidates]
-    print("UNITDATES", unitdates)
+    # print("UNITDATES", unitdates)
     mdate = datetime.strptime(exam_date(course, '期中'), '%Y%m%d').date()
     # fdate = datetime.strptime(exam_date(course, '期末'), '%Y%m%d').date()
     plt.figure(figsize=(10, 6))
@@ -165,12 +211,15 @@ def course_submits(course_name): # Homework submits
     plt.xlabel('Units')
     plt.xticks(rotation=30)
     plt.gca().xaxis.set_major_locator(plt.MultipleLocator(7))
-    plt.ylabel('Average # of submits')
+    plt.ylabel('Submits / Seconds')
     plt.title('Homework Submits')
     plt.axvline(x=mdate, color='r', linestyle='--')
     plt.text(mdate, np.mean(submit_counts), f'Mid-Exam\n{mdate}', ha='center', va='bottom')
 
     plt.plot(unitdates, average_submit_counts, 'o-', color='g', label='Problem Submit Counts')
+    plt.legend()
+
+    plt.plot(unitdates, spent_times, '*-', color='r', label='Spent Times')
     plt.legend()
     # plt.axvline(x=fdate, color='r', linestyle='--')
     # plt.text(fdate, np.mean(submit_counts), f'Final-Exam\n{fdate}', ha='center', va='bottom')
@@ -185,6 +234,74 @@ def course_submits(course_name): # Homework submits
 
     plt.savefig(f'Fig/{cid}_submits.png')
     return f'Fig/{cid}_submits.png'
+
+def course_predict(course_name, trainexam, testexam, first_threshold=FIRST_TIME_THRESHOLD, first_ignore=FIRST_IGNORE, modelname="KNN"):
+    cid = courseMap[course_name]
+    course = [c for c in CH.courses if c["id"] == cid][0]
+    submits = [s for s in CH.submits if 'cid' in s and s['cid'] == cid]
+    answers = CH.answers
+    problemsmap = CH.problemsmap
+    sdata = student_data(course, submits, answers, problemsmap, first_threshold, first_ignore)
+    sdata.fillna(0, inplace=True)
+    df = sdata
+    dcolumns = sdata.columns
+    similar_columns = [col for col in dcolumns if 'PAS' in col]
+    df['PAS'] = sdata[similar_columns].replace(-1, 0).sum(axis=1)
+    ename_keywords = ['小考', '期中', '期末']
+    exams = set()
+    for keyword in ename_keywords:
+        exams |= {ename for ename in df['ename'] if keyword in ename}
+    for exam in exams:
+        examscore = df.loc[df['ename'] == exam, 'PAS'].max(axis=0)
+        df.loc[df['ename'] == exam, 'PAS'] = df.loc[df['ename'] == exam, 'PAS']*100/examscore
+
+    df.fillna(0, inplace=True)
+    traindata = df[df['ename'].str.contains(trainexam)]
+    testdata = df[df['ename'].str.contains(testexam)]
+    traincolpattern = r'P\d+'
+    x_columns = [col for col in df.columns if re.match(traincolpattern, col)]
+    xdata = traindata.loc[:, x_columns]
+    ydata = traindata.loc[:, 'PAS']
+    xdatamax = xdata.max()
+    xdatamax[xdatamax == 0] = 1
+    xdata = xdata/xdatamax
+    # Create a RandomForestRegressor object
+    if modelname == "KNN":
+        model = KNeighborsRegressor()
+    else:
+        model = RandomForestRegressor()
+    # Fit the model to the data
+    model.fit(xdata, ydata)
+    xtest = testdata.loc[:, x_columns]
+    ytest = testdata.loc[:, 'PAS']
+
+    xtestmax = xtest.max()
+    xtestmax[xtestmax == 0] = 1
+    xtest = xtest/xtestmax
+
+    # y1est = np.full(len(ytest), ydata.mean())
+    # mse1 = mean_squared_error(ytest, y1est, squared=False)
+    y2est = model.predict(xtest)
+    y2est = y2est - 7
+    # y2est = y2est/np.max(y2est)*100
+    ypossible = np.array([n*100/7 for n in range(8)])
+    # y2est = np.array([ypossible[np.abs(ypossible - y).argmin()] for y in y2est])
+    mse2 = mean_squared_error(ytest, y2est, squared=False)
+    # print(mse1, mse2)
+    # print(ydata.mean())
+    # print(int(np.mean(ytest)), int(np.min(ytest)), int(np.max(ytest)), list(map(float,ytest)))
+    # print(int(np.mean(y1est)), int(np.min(y1est)), int(np.max(y1est)), list(map(float,y1est)))
+    # print(int(np.mean(y2est)), int(np.min(y2est)), int(np.max(y2est)), list(map(float,y2est)))
+    correlation = np.corrcoef(y2est, ytest)[0, 1]
+    # print("Correlation of y2est and y_test:", correlation)
+    plt.figure(figsize=(10, 6))
+    plt.scatter(y2est, ytest)
+    # ytest = list(map(int, ytest*7/100+0.01))
+    # y2est = list(map(int, y2est*7/100+0.01))
+    # confusion_matrix(ytest, y2est)
+    outstr = f"Correlation: {correlation:.2f}, MSE: {mse2:.2f}"
+    return outstr, plt
+
 
 def subtract_seconds_from_datetime(datetime_str, seconds):
     # Parse the datetime string to a datetime object
@@ -222,6 +339,9 @@ def subtract_seconds_from_datetime(datetime_str, seconds):
 
 
 def course_student_submits(course, student, submits): # Homework submits
+    # print("COURSE", course['name'])
+    # print("STUDENT", student)
+    # print("SUBMITS", len(submits))
     result = [s for s in submits if 'cid' in s and s['uid'] == student['id'] and s['cid'] == course['id']]
     sorted_result = sorted(result, key=lambda x: x['created'])
     return sorted_result
@@ -319,49 +439,38 @@ def course_stat(course, submits, answers, problemsmap):
     # course_student_date_submits(course, course_students(course)[0], "20220425", submits)
     # plot_date_starts(course, submits, "20220425", problemsmap)
 
-# XFIELDS = ['TST', 'TPS', 'TSC', 'TAC', 'TWA', 'TNA', 'TCE', 'TSS']
-# YFIELDS = ['PAS']
-# FIRST_TIME_THRESHOLD = 600
-# Collect data for each student
-def _student_data(student, exam, answer, submits, problemsmap):
-    result = {"sid": student["id"], "sname": student["name"], "ename": exam["name"], "edate": answer["date"]}
-    examdate = answer["date"]
-    examstart = examdate + "091000"
-    before_exam_submits = [s for s in submits if s["created"]<examstart]
-    csubmits = categorize_submits_by_pid(before_exam_submits)
-    result["TPS"] = len(csubmits)
-    for pid, ss in csubmits.items():
-        pss = pid_submits_stat(ss)
-        for k, v in pss.items():
-            result["P"+pid[4:]+k] = v
-        result["PAS"+pid[4:]] = None
 
-    for pid in exam["pids"]:
-        result["PAS"+pid[4:]] = -1
-        if pid in answer["submits"]:
-            v = answer["submits"][pid]
-            if v["correct"]: result["PAS"+pid[4:]] = 1
-
-    return result
-
-def submits_stat(submits):
+def submits_stat(submits, first_threshold=FIRST_TIME_THRESHOLD, first_ignore=FIRST_IGNORE):
     result = {}
     csubmits = categorize_submits_by_pid(submits)
     result["TPS"] = len(csubmits)
     for pid, ss in csubmits.items():
-        pss = pid_submits_stat(ss)
+        pss = pid_submits_stat(ss, first_threshold, first_ignore)
         for k, v in pss.items():
             result["P"+pid[4:]+k] = v
     return result
 
+def separate_submits(submits):
+    submits_lists = []
+    current_list = []
+    prev_time_pt = None
+    for submit in submits:
+        if prev_time_pt is None or ('time_pt' in submit and submit['time_pt'] > prev_time_pt):
+            current_list.append(submit)
+        else:
+            submits_lists.append(current_list)
+            current_list = [submit]
+        if 'time_pt' in submit: prev_time_pt = submit['time_pt']
+    submits_lists.append(current_list)
+    return submits_lists
 
-def pid_submits_stat(submits):
+def pid_submits_stat(submits, first_threshold=FIRST_TIME_THRESHOLD, first_ignore=FIRST_IGNORE):
     tst, tsc, tac = 0, 0, 0
     sep_submits = separate_submits(submits)
     for ss in sep_submits:
         if 'time_pt' in ss[0]:
-            if ss[-1]['time_pt'] < FIRST_IGNORE: continue # This is just a test
-            delta = ss[0]['time_pt'] - FIRST_TIME_THRESHOLD
+            if ss[-1]['time_pt'] < first_ignore: continue # This is just a test
+            delta = ss[0]['time_pt'] - first_threshold
             if delta < 0: st = ss[-1]['time_pt']
             else: st = ss[-1]['time_pt'] - delta
             tst += st
@@ -374,7 +483,7 @@ def pid_submits_stat(submits):
 
     twa, tna, tce, tss = 0, 0, 0, 0
     for s in submits:
-        if 'time_pt' in s and s['time_pt'] < FIRST_IGNORE: continue
+        if 'time_pt' in s and s['time_pt'] < first_ignore: continue
         if s['status'] == 'AC': continue
         if s['status'] == 'PE' or s['status'] == 'NA': tna += 1
         elif s['status'] == 'CE': tce += 1
@@ -384,24 +493,34 @@ def pid_submits_stat(submits):
     result = {"TST": tst, "TSC": tsc, "TLS": len(sep_submits), "TAC": tac, "TWA": twa, "TNA": tna, "TCE": tce, "TSS": tss}
     return result
 
-def separate_submits(submits):
-    submits_lists = []
-    current_list = []
-    prev_time_pt = None
-    for submit in submits:
-        if prev_time_pt is None or submit['time_pt'] > prev_time_pt:
-            current_list.append(submit)
-        else:
-            submits_lists.append(current_list)
-            current_list = [submit]
-        if 'time_pt' in submit: prev_time_pt = submit['time_pt']
-    submits_lists.append(current_list)
-    return submits_lists
+# XFIELDS = ['TST', 'TPS', 'TSC', 'TAC', 'TWA', 'TNA', 'TCE', 'TSS']
+# YFIELDS = ['PAS']
+# FIRST_TIME_THRESHOLD = 600
+# Collect data for each student
+def _student_data(student, exam, answer, submits, first_threshold=FIRST_TIME_THRESHOLD, first_ignore=FIRST_IGNORE):
+    result = {"sid": student["id"], "sname": student["name"], "ename": exam["name"], "edate": answer["date"]}
+    examdate = answer["date"]
+    examstart = examdate + "091000"
+    before_exam_submits = [s for s in submits if s["created"]<examstart]
+    csubmits = categorize_submits_by_pid(before_exam_submits)
+    result["TPS"] = len(csubmits)
+    for pid, ss in csubmits.items():
+        pss = pid_submits_stat(ss, first_threshold, first_ignore)
+        for k, v in pss.items():
+            result["P"+pid[4:]+k] = v
+        result["PAS"+pid[4:]] = None
 
+    for pid in exam["pids"]:
+        result["PAS"+pid[4:]] = -1
+        if pid in answer["submits"]:
+            v = answer["submits"][pid]
+            if v["correct"]: result["PAS"+pid[4:]] = 1
 
-def student_data(course, submits, answers, problemsmap):
-    exams = course_exams(course, answers, problemsmap)
-    students = course_students(course)
+    return result
+
+def student_data(course, submits, answers, problemsmap, first_threshold=FIRST_TIME_THRESHOLD, first_ignore=FIRST_IGNORE):
+    exams = _course_exams_raw(course, answers, problemsmap)
+    students = _course_students_raw(course)
     records = []
     all_keys = set()
     for student in students:
@@ -409,7 +528,7 @@ def student_data(course, submits, answers, problemsmap):
         for exam in exams:
             exam_answers = [a for a in answers if a["examid"] == exam["id"] and a["userid"] == student['id']]
             for a in exam_answers:
-                sdata = _student_data(student, exam, a, student_submits, problemsmap)
+                sdata = _student_data(student, exam, a, student_submits, first_threshold, first_ignore)
                 records.append(sdata)
                 all_keys |= set(sdata.keys())
 
@@ -420,6 +539,7 @@ def student_data(course, submits, answers, problemsmap):
     df = pd.DataFrame(records)
     df = df.reindex(sorted(df.columns), axis=1)
     df_sorted = df.sort_values(by='edate')
+    return df_sorted
     df_sorted.to_csv(f"{course['id']}.csv", index=False)
     print("COLS:", list(df.columns))
     print("SHAPE", df.shape)
