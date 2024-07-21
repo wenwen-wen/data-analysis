@@ -1,6 +1,7 @@
 import argparse
 import os
 import json
+from time import sleep
 from ignoreList import IGNORE_LIST_IDS
 from tabulate import tabulate
 from datetime import datetime, timedelta, time
@@ -300,8 +301,38 @@ def course_predict(course_name, trainexam, testexam, first_threshold=FIRST_TIME_
     # y2est = list(map(int, y2est*7/100+0.01))
     # confusion_matrix(ytest, y2est)
     outstr = f"Correlation: {correlation:.2f}, MSE: {mse2:.2f}"
+    ypossible = np.array([n*100/7 for n in range(8)])
+    # y2est = np.array([ypossible[np.abs(ypossible - y).argmin()] for y in y2est])
+    ytest = list(map(int, ytest*7/100+0.01))
+    y2est = list(map(int, y2est*7/100+0.01))
+    cmatrix = confusion_matrix(ytest, y2est)
+    outstr += "\n```\n" + str(cmatrix) + "\n```\n"
     return outstr, plt
 
+def course_submit_inspect(course_name, unitname, studentname, pname, cnum):
+    cid = courseMap[course_name]
+    course = [c for c in CH.courses if c["id"] == cid][0]
+    submits = [s for s in CH.submits if 'cid' in s and s['cid'] == cid]
+    units = course['units']
+    if unitname.upper() != 'ALL':
+        unit = [u for u in units if u['name'] == unitname][0]
+        pids = [p['id'] for p in unit['probs']]
+        submits = [s for s in submits if s['pid'] in pids]
+    if studentname.upper() != 'ALL':
+        students = course['students']
+        sids = [id for id,s in students.items() if studentname in s['name']]
+        submits = [s for s in submits if s['uid'] in sids]
+    if pname.upper() != 'ALL':
+        pids = [k for n,k in CH.problemsmap.items() if pname in n]
+        submits = [s for s in submits if s['pid'] in pids]
+
+    if cnum < len(submits): submit = submits[cnum]
+    else: submit = submits[-1]
+    stat = f"Submit : {cnum}/{len(submits)}"
+    stat += f", Score={submit['score']}, Status={submit['status']}"
+    if "time_pt" in submit: stat += f", PT={submit['time_pt']}"
+    code = submit['code']
+    return stat, code
 
 def subtract_seconds_from_datetime(datetime_str, seconds):
     # Parse the datetime string to a datetime object
