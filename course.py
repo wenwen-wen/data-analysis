@@ -315,6 +315,7 @@ def course_predict(course_name, trainexam, testexam, first_threshold=FIRST_TIME_
     ytest = list(map(int, ytest*7/100+0.01))
     y2est = list(map(int, y2est*7/100+0.01))
     cmatrix = confusion_matrix(ytest, y2est)
+<<<<<<< HEAD
     plt2, ax = plt.subplots(figsize=(8, 6))
     # plt2 = plt.figure(figsize=(8, 6))
     sns.heatmap(cmatrix, annot=True, fmt="d", cmap="Blues")
@@ -370,6 +371,35 @@ def course_submit_inspect(course_name, studentname, pname, index):
         if exam:
             stat2 += f"Exam: {exam['name']}, Score: {answer['score']}/{exam['tscore']}\n"
     return code, stat1, stat2, slen, index
+=======
+    outstr += "\n```\n" + str(cmatrix) + "\n```\n"
+    return outstr, plt
+
+def course_submit_inspect(course_name, unitname, studentname, pname, cnum):
+    cid = courseMap[course_name]
+    course = [c for c in CH.courses if c["id"] == cid][0]
+    submits = [s for s in CH.submits if 'cid' in s and s['cid'] == cid]
+    units = course['units']
+    if unitname.upper() != 'ALL':
+        unit = [u for u in units if u['name'] == unitname][0]
+        pids = [p['id'] for p in unit['probs']]
+        submits = [s for s in submits if s['pid'] in pids]
+    if studentname.upper() != 'ALL':
+        students = course['students']
+        sids = [id for id,s in students.items() if studentname in s['name']]
+        submits = [s for s in submits if s['uid'] in sids]
+    if pname.upper() != 'ALL':
+        pids = [k for n,k in CH.problemsmap.items() if pname in n]
+        submits = [s for s in submits if s['pid'] in pids]
+
+    if cnum < len(submits): submit = submits[cnum]
+    else: submit = submits[-1]
+    stat = f"Submit : {cnum}/{len(submits)}"
+    stat += f", Score={submit['score']}, Status={submit['status']}"
+    if "time_pt" in submit: stat += f", PT={submit['time_pt']}"
+    code = submit['code']
+    return stat, code
+>>>>>>> d294ef17b8752112c4ed68cabb927e32c569b4a1
 
 def subtract_seconds_from_datetime(datetime_str, seconds):
     # Parse the datetime string to a datetime object
