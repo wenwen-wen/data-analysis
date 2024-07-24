@@ -1,6 +1,7 @@
 import argparse
 import os
 import json
+from time import sleep
 from ignoreList import IGNORE_LIST_IDS
 from tabulate import tabulate
 from datetime import datetime, timedelta, time
@@ -15,6 +16,7 @@ from sklearn.metrics import mean_squared_error
 import numpy as np
 from sklearn.metrics import confusion_matrix
 from matplotlib import pyplot as plt
+import seaborn as sns
 
 courseSelect = [
     "110-計概(一)甲",
@@ -53,7 +55,7 @@ FIRST_TIME_THRESHOLD = 600
 FIRST_IGNORE = 10
 
 class CodingHere():
-    folder = "./srcdata/2024-07-11/groups"
+    folder = "groups"
     coursefile = os.path.join(folder, 'courses.json')
     submitsfile = os.path.join(folder, 'submits.json')
     answerfile = os.path.join(folder, 'answers.json')
@@ -71,10 +73,15 @@ class CodingHere():
 
         with open(self.problemfile, 'r') as file:
             rawproblems = json.load(file)
-            problems = [p for p in rawproblems if 'name' in p and p['name']=='基礎題庫'][0]['problems']
-            self.problemsmap = {value['title']['zh']: key for key, value in problems.items()}
+            self.problems = [p for p in rawproblems if 'name' in p and p['name']=='基礎題庫'][0]['problems']
+            self.problemsmap = {value['title']['zh']: key for key, value in self.problems.items()}
 
 CH = CodingHere()
+
+def color_text(txt, color, bgcolor=None):
+    if bgcolor:
+        return f'<span style="padding:2px 5px;color:{color};background-color:{bgcolor}">{txt}</span>'
+    return f'<span style="padding:2px 5px;color:{color}">{txt}</span>'
 
 def course_basic(course_name):
     cid = courseMap[course_name]
@@ -100,7 +107,7 @@ def _course_students(course):
     students = course['students']
     student_keys = [k for k in students.keys() if k not in IGNORE_LIST_IDS]
     students = [students[k] for k in student_keys]
-    output = f"Students : {len(students)}\n"
+    output = f"<div class='mylabel'> 學生人數：{len(students)}</div>"
     output += ", ".join([s['name'] for s in students])
     return output
 
@@ -114,11 +121,12 @@ def course_units(course_name):
     course = [c for c in CH.courses if c["id"] == cid][0]
     if 'units' not in course: return "No units found\n"
     units = course['units']
-    output = f"Units : {len(units)}\n"
+    output = f"<div class='mylabel'>課程單元數 : {len(units)}</div>"
     for unit in units:
-        output += f"{unit['name']}: {unit['startDate']}-{unit['endDate']}, "
+        output += f"{color_text(unit['name'], '#FF007F')}: {unit['startDate']}-{unit['endDate']}, "
         probs = [p['title']['zh'] for p in unit['probs']]
-        output += "[" + ", ".join(probs) + "]\n"
+        output += "[" + ", ".join(probs) + "]<br>"
+    print(output)
     return output
 
 def _course_exams_raw(course, answers, problemsmap):
@@ -147,14 +155,14 @@ def _course_exams_raw(course, answers, problemsmap):
 
 def _course_exams(course):
     if 'exams' not in course: return "No exams found\n"
-    output = f"Exams : {len(course['exams'])}\n"
+    output = f"<div class='mylabel'>考試 : {len(course['exams'])}</div>"
     for exam in course['exams']:
         exam_answers = [a for a in CH.answers if a["examid"] == exam["id"]]
         answer_dates = list(set(a["date"] for a in exam_answers))
         dates_str = ", ".join(answer_dates)
-        output += f"{exam['name']}: {dates_str}, ({'/'.join(exam['compilers'])}), "
+        output += f"{color_text(exam['name'], '#FF007F')}: {dates_str}, ({'/'.join(exam['compilers'])}), "
         probs = [p['title']['zh'] for p in exam['probs']]
-        output += "[" + ", ".join(probs) + "]\n"
+        output += "[" + ", ".join(probs) + "]<br>"
     return output
 
 def course_exams(course_name):
@@ -282,7 +290,7 @@ def course_predict(course_name, trainexam, testexam, first_threshold=FIRST_TIME_
     # y1est = np.full(len(ytest), ydata.mean())
     # mse1 = mean_squared_error(ytest, y1est, squared=False)
     y2est = model.predict(xtest)
-    y2est = y2est - 7
+    y2est = y2est
     # y2est = y2est/np.max(y2est)*100
     ypossible = np.array([n*100/7 for n in range(8)])
     # y2est = np.array([ypossible[np.abs(ypossible - y).argmin()] for y in y2est])
@@ -294,14 +302,74 @@ def course_predict(course_name, trainexam, testexam, first_threshold=FIRST_TIME_
     # print(int(np.mean(y2est)), int(np.min(y2est)), int(np.max(y2est)), list(map(float,y2est)))
     correlation = np.corrcoef(y2est, ytest)[0, 1]
     # print("Correlation of y2est and y_test:", correlation)
-    plt.figure(figsize=(10, 6))
+    plt1 = plt.figure(figsize=(8, 6))
     plt.scatter(y2est, ytest)
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
     # ytest = list(map(int, ytest*7/100+0.01))
     # y2est = list(map(int, y2est*7/100+0.01))
     # confusion_matrix(ytest, y2est)
     outstr = f"Correlation: {correlation:.2f}, MSE: {mse2:.2f}"
+    ypossible = np.array([n*100/7 for n in range(8)])
+    # y2est = np.array([ypossible[np.abs(ypossible - y).argmin()] for y in y2est])
+    ytest = list(map(int, ytest*7/100+0.01))
+    y2est = list(map(int, y2est*7/100+0.01))
+    cmatrix = confusion_matrix(ytest, y2est)
+    plt2, ax = plt.subplots(figsize=(8, 6))
+    # plt2 = plt.figure(figsize=(8, 6))
+    sns.heatmap(cmatrix, annot=True, fmt="d", cmap="Blues")
+    ax.set_xlabel('Predicted')
+    ax.set_ylabel('Actual')
+    # ax.set_title('Confusion Matrix')
+    # Move x-ticks and labels to the top
+    ax.xaxis.tick_top()
+    ax.xaxis.set_label_position('top')
+    # ax.xlabel('Predicted')
+    # ax.ylabel('Actual')
+    # ax.title('Confusion Matrix')
+    # plt.xticks(rotation=30, ha='right')
+    # plt.gca().xaxis.set_label_position('top')
+    # print("Confusion Matrix: ", cmatrix)
+    outstr = f"Correlation: {correlation:.2f}, MSE: {mse2:.2f}"
+    return outstr, plt2, plt1
+    outstr += "\n```\n" + str(cmatrix) + "\n```\n"
     return outstr, plt
 
+def course_submit_inspect(course_name, studentname, pname, index):
+    cid = courseMap[course_name]
+    course = [c for c in CH.courses if c["id"] == cid][0]
+    submits = [s for s in CH.submits if 'cid' in s and s['cid'] == cid]
+    students = course['students']
+    if studentname.upper() != '':
+        sids = [id for id,s in students.items() if studentname in s['name']]
+        submits = [s for s in submits if s['uid'] in sids]
+    if pname.upper() != '':
+        pids = [k for n,k in CH.problemsmap.items() if pname in n]
+        submits = [s for s in submits if s['pid'] in pids]
+    slen = len(submits)
+    if index < len(submits):
+        submit = submits[index]
+    else:
+        submit = submits[slen-1]
+        index = slen-1
+    code = submit['code']
+    problem = CH.problems[submit['pid']]
+    stat1 = f"Index: {index+1}/{slen}\n"
+    stat1 += f"Problem: {problem['title']['zh']}\n"
+    stat1 += f"Submit: {submit['created']}\n"
+    stat1 += f"Score: {submit['score']}\n"
+    stat1 += f"Status: {submit['status']}\n"
+    if "time_pt" in submit: stat1 += f"PT: {submit['time_pt']} 秒\n"
+
+    student = students[submit['uid']]
+    if not student: return code, stat1, "", slen, index
+    stat2 = f"Student: {student['name']}\n"
+    answers = [a for a in CH.answers if a['courseid'] == cid and a['userid'] == submit['uid']]
+    for answer in answers:
+        exam = [e for e in course['exams'] if e['id'] == answer['examid']][0]
+        if exam:
+            stat2 += f"Exam: {exam['name']}, Score: {answer['score']}/{exam['tscore']}\n"
+    return code, stat1, stat2, slen, index
 
 def subtract_seconds_from_datetime(datetime_str, seconds):
     # Parse the datetime string to a datetime object
