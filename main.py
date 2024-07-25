@@ -90,9 +90,9 @@ with gr.Blocks(theme=gr.themes.Soft(), css=css) as demo:
             btn.click(show_course_submits, [coursename, first_threshold, first_ignore], submits)
 
     with gr.Tab("課程模型"):
-        trainexam = gr.Radio(["小考", "小考|期中"], value="小考|期中", label="Train Exam" )
-        testexam = gr.Radio(["期中測驗", "期末測驗", "期中考", "期末考"], value="期末測驗")
-        modelname = gr.Radio(["Random Forest", "KNN"], value="KNN", label="Model Name")
+        trainexam = gr.Radio(["小考", "小考|期中"], value="小考|期中", label="訓練考試" )
+        testexam = gr.Radio(["期中測驗", "期末測驗", "期中考", "期末考"], value="期末測驗", label="測試考試")
+        modelname = gr.Radio(["Random Forest", "KNN"], value="KNN", label="模型選擇")
         output1 = gr.Markdown(line_breaks=True)
         with gr.Row():
             output2 = gr.Plot()

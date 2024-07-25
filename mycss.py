@@ -63,7 +63,7 @@ h1 {
 
 }
 
-button {
+.button {
 
     background: #F099BF;
 
